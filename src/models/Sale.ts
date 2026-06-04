@@ -6,7 +6,7 @@ class Sale extends Model<InferAttributes<Sale>, InferCreationAttributes<Sale>> {
   declare total: number;
   declare customer_id: number; // Quién compró
   declare user_id: number; // Quién vendió
-  declare paymentMethod: 'Efectivo' | 'Débito' | 'Cuenta_corriente' | 'Transferencia' | 'Tarjeta_de_crédito' ; // Método de pago utilizado
+  declare paymentMethod: 'Efectivo' | 'Débito' | 'Cuenta corriente' | 'Transferencia' | 'Tarjeta de crédito' ; // Método de pago utilizado
 }
 
 Sale.init(
@@ -32,7 +32,7 @@ Sale.init(
     paymentMethod: {
       type: DataTypes.ENUM('Efectivo', 'Débito', 'Cuenta corriente', 'Transferencia', 'Tarjeta de crédito'), // Opciones de pago comunes
       allowNull: false,
-      defaultValue: 'Efectivo', // Asumimos que la mayoría de las ventas son en efectivo
+      defaultValue: 'Transferencia', // Asumimos que la mayoría de las ventas son en efectivo
     }
 
   },

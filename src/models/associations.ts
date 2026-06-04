@@ -5,6 +5,7 @@ import Customer from './Customer.js';
 import Sale from './Sale.js';
 import SaleDetail from './SaleDetail.js';
 import User from './User.js';
+import CustomerAccount from './CustomerAccount.js';
 
 // Aquí definimos todas las relaciones del sistema
 const setupAssociations = () => {
@@ -59,6 +60,16 @@ const setupAssociations = () => {
 
   User.hasMany(Sale, { foreignKey: 'user_id', as: 'sales' });
   Sale.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+  // Relación Clientes <-> Cuenta Corriente
+  Customer.hasMany(CustomerAccount, { foreignKey: 'customer_id', as: 'accountMovements' });
+  CustomerAccount.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+
+  // Relación Ventas <-> Cuenta Corriente
+  Sale.hasOne(CustomerAccount, { foreignKey: 'sale_id', as: 'accountMovement' });
+  CustomerAccount.belongsTo(Sale, { foreignKey: 'sale_id', as: 'sale' });
+
+
 };
 
 export default setupAssociations;
