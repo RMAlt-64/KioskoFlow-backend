@@ -5,7 +5,7 @@ import SaleDetail from '../models/SaleDetail.js';
 import Product from '../models/Product.js';
 import Customer from '../models/Customer.js'; // <-- IMPORTANTE: Importar Customer
 import CustomerAccount from '../models/CustomerAccount.js'; // <-- IMPORTANTE: Importar CustomerAccount
-
+import User from '../models/User.js';
 
 export const createSale = async (req: Request, res: Response) => {
   // Iniciamos una transacción de Sequelize
@@ -113,5 +113,68 @@ export const createSale = async (req: Request, res: Response) => {
     await transaction.rollback();
     console.error(error);
     return res.status(500).json({ message: 'Error crítico al procesar la venta.' });
+  }
+};
+
+export const getSalesHistory = async (req: Request, res: Response) => {
+  try {
+    // Buscamos todas las ventas de la base de datos
+    const sales = await Sale.findAll({
+      // Ordenamos para que las últimas ventas aparezcan primero (Descendente)
+      order: [['createdAt', 'DESC']], 
+      
+      // Acá está la magia de Sequelize: incluimos los modelos relacionados
+      include: [
+        {
+          model: User,
+          as: 'user', // Asegurate de que coincida con el 'as' de tus associations
+          attributes: ['id', 'username'] // Traemos solo el ID y el nombre del vendedor, no la contraseña
+        },
+        {
+          model: Customer,
+          as: 'customer',
+          attributes: ['id', 'name'] // Traemos solo ID y nombre del cliente
+        },
+        {
+          model: SaleDetail,
+          as: 'details', // El 'as' que le hayas puesto en associations para los renglones
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['id', 'name', 'price'] // De cada producto del detalle queremos saber el nombre y precio
+            }
+          ]
+        }
+      ]
+    });
+
+    // Mapeamos el resultado para devolverlo en un castellano bien limpio para el Front
+    const historialCastellano = sales.map(sale => {
+      // Convertimos la instancia de Sequelize a un objeto JS común
+      const saleJson = sale.toJSON() as any; 
+
+      return {
+        venta_id: saleJson.id,
+        fecha: saleJson.createdAt,
+        total: Number(saleJson.total),
+        metodo_pago: saleJson.paymentMethod, // Tu ENUM en la base de datos
+        vendedor: saleJson.user ? saleJson.user.username : 'Desconocido',
+        cliente: saleJson.customer ? saleJson.customer.name : 'Consumidor Final',
+        productos_vendidos: saleJson.details.map((detail: any) => ({
+          producto_id: detail.product_id,
+          nombre_producto: detail.product ? detail.product.name : 'Producto Eliminado',
+          cantidad: detail.quantity,
+          precio_unitario_historico: Number(detail.unit_price),
+          subtotal: Number(detail.unit_price) * detail.quantity
+        }))
+      };
+    });
+
+    return res.status(200).json(historialCastellano);
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Error al obtener el historial de ventas.' });
   }
 };
