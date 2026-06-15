@@ -4,7 +4,7 @@ import Customer from '../models/Customer.js';
 
 export const createCustomer = async (req: Request, res: Response) => {
   try {
-    const { name, lastName, phone, DNI, creditMax  } = req.body;
+    const { name, lastName, phone, DNI, creditMax, allow_credit } = req.body;
 
     // Validamos que el Documento de la persona debe ser único
     const existingCustomer = await Customer.findOne({ where: { name } });
@@ -13,7 +13,7 @@ export const createCustomer = async (req: Request, res: Response) => {
     }
 
     // Creamos el nuevo cliente
-    const newCustomer = await Customer.create({ name, lastName, phone, DNI, creditMax });
+    const newCustomer = await Customer.create({ name, lastName, phone, DNI, creditMax, allow_credit }); // Si el crédito máximo es mayor a 0, le damos permiso para comprar fiado
 
     res.status(201).json(newCustomer);
   } catch (error) {

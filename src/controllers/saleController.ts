@@ -3,6 +3,9 @@ import sequelize from '../config/database.js';
 import Sale from '../models/Sale.js';
 import SaleDetail from '../models/SaleDetail.js';
 import Product from '../models/Product.js';
+import Customer from '../models/Customer.js'; // <-- IMPORTANTE: Importar Customer
+import CustomerAccount from '../models/CustomerAccount.js'; // <-- IMPORTANTE: Importar CustomerAccount
+
 
 export const createSale = async (req: Request, res: Response) => {
   // Iniciamos una transacción de Sequelize
@@ -10,11 +13,30 @@ export const createSale = async (req: Request, res: Response) => {
 
   try {
     // El cliente nos manda: quién atiende (user_id), quién compra (customer_id) y la lista de productos
-    const { user_id, customer_id, products } = req.body;
+    const { user_id, customer_id, products, payment_method } = req.body;
 
     // 1. Validaciones básicas
-    if (!user_id || !customer_id || !products || products.length === 0) {
+    if (!user_id || !customer_id || !products || products.length === 0 || !payment_method) {
       return res.status(400).json({ message: 'Datos de la venta incompletos.' });
+    }
+    console.log('Datos recibidos para la venta:', { user_id, customer_id, products, payment_method });
+
+    // 2. Si quiere fiar, primero investigamos al cliente
+    if (payment_method === 'Cuenta corriente') {
+      const customer = await Customer.findByPk(customer_id, { transaction });
+      
+      if (!customer) {
+        await transaction.rollback();
+        return res.status(404).json({ message: 'El cliente especificado no existe.' });
+      }
+
+      // ¡REGLA DE ORO!: Si no tiene el permiso activado, le rebotamos la operación en el acto
+      if (!customer.allow_credit) {
+        await transaction.rollback();
+        return res.status(400).json({ 
+          message: `El cliente '${customer.name}' no está autorizado para comprar fiado (Cuenta Corriente deshabilitada).` 
+        });
+      }
     }
 
     // Creamos la cabecera de la venta (empieza en total 0, lo calculamos abajo)
@@ -22,12 +44,12 @@ export const createSale = async (req: Request, res: Response) => {
         total: 0,
         customer_id, // <-- ¡Acá impacta el 1 (random) o el ID del cliente de confianza!
         user_id,
-        paymentMethod: 'Efectivo'
+        paymentMethod: payment_method
     }, { transaction });
 
     let totalVenta = 0;
 
-    // 2. Recorremos el carrito de compras que viene del frontend
+    // 3. El bucle de productos que ya armaste y funciona excelente
     for (const item of products) {
       const { product_id, quantity } = item;
 
@@ -65,6 +87,17 @@ export const createSale = async (req: Request, res: Response) => {
     // 3. Finalmente, actualizamos el total real de la cabecera de la venta
     newSale.total = totalVenta;
     await newSale.save({ transaction });
+
+    // 4. NUEVO: Si la venta fue fiada, registramos el movimiento de DEUDA
+    if (payment_method === 'Cuenta corriente') {
+      await CustomerAccount.create({
+        customer_id,
+        sale_id: newSale.id,
+        type: 'debit', // debit significa que nos debe plata
+        amount: totalVenta,
+        description: `Compra fiada - Venta #${newSale.id}`
+      }, { transaction });
+    }
 
     // Si todo salió bien hasta acá, confirmamos los cambios físicamente en PostgreSQL
     await transaction.commit();

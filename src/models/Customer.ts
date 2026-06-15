@@ -8,6 +8,7 @@ class Customer extends Model<InferAttributes<Customer>, InferCreationAttributes<
   declare lastName: string | null; // El apellido puede ser opcional, especialmente para clientes ocasionales
   declare DNI: string | null; // El DNI también puede ser opcional, especialmente para clientes ocasionales
   declare creditMax: number | null; // El crédito máximo puede ser opcional, especialmente para clientes ocasionales
+  declare allow_credit: boolean; // Indicador de si el cliente tiene permitido comprar fiado (Cuenta Corriente)
 }
 
 Customer.init(
@@ -36,7 +37,12 @@ Customer.init(
     creditMax: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true, // Permitimos que quede vacío si no es un cliente con crédito
-    }
+    },
+    allow_credit: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false, // Por defecto, los clientes no tienen permitido comprar fiado
+    },
     },
   {
     sequelize,

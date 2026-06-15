@@ -27,12 +27,12 @@ Sale.init(
     },
     user_id: { // <-- AGREGADO
       type: DataTypes.INTEGER,
-      allowNull: true, // Obliga a que toda venta tenga un vendedor asignado
+      allowNull: false, // Obliga a que toda venta tenga un vendedor asignado
     },
     paymentMethod: {
       type: DataTypes.ENUM('Efectivo', 'Débito', 'Cuenta corriente', 'Transferencia', 'Tarjeta de crédito'), // Opciones de pago comunes
       allowNull: false,
-      defaultValue: 'Transferencia', // Asumimos que la mayoría de las ventas son en efectivo
+      defaultValue: 'Efectivo', // Asumimos que la mayoría de las ventas son en efectivo
     }
 
   },
