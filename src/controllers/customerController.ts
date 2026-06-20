@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-
+import { Op } from 'sequelize';
 import Customer from '../models/Customer.js';
 
 export const createCustomer = async (req: Request, res: Response) => {
@@ -22,3 +22,50 @@ export const createCustomer = async (req: Request, res: Response) => {
   }
 };
 
+export const searchCustomers = async (req: Request, res: Response) => {
+  try {
+    // Capturamos el término de búsqueda de la URL. Ej: /api/customers/search?term=juan
+    const { term } = req.query;
+
+    // Si no mandan ningún término, devolvemos un array vacío en vez de romper el servidor
+    if (!term || typeof term !== 'string') {
+      return res.status(200).json([]);
+    }
+
+    // Buscamos en la base de datos
+    const customers = await Customer.findAll({
+      where: {
+        // Op.or permite que se cumpla una condición O la otra
+        [Op.or]: [
+          {
+            // Busca si el nombre contiene el término parcial (iLike = insensible a mayúsculas)
+            name: {
+              [Op.iLike]: `%${term}%` // El '%' a los lados significa "cualquier texto antes o después"
+            }
+          },
+          {
+            // Busca si el DNI contiene el término parcial
+            DNI: {
+              [Op.iLike]: `%${term}%`
+            }
+          }
+        ]
+      },
+      limit: 10 // Limitamos a 10 resultados para que sea súper rápido y no sature la pantalla
+    });
+
+    // Mapeamos la respuesta para que el Frontend la reciba bien clarita en castellano
+    const resultadoCastellano = customers.map(customer => ({
+      customer_id: customer.id,
+      nombre: customer.name,
+      dni: customer.DNI || 'Sin especificar',
+      permite_credito: customer.allow_credit
+    }));
+
+    return res.status(200).json(resultadoCastellano);
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Error crítico al buscar clientes.' });
+  }
+};

@@ -23,27 +23,28 @@ Customer.init(
       allowNull: false, // Ej: "Consumidor Final" o el nombre del cliente recurrente
     },
     lastName: {
-        type: DataTypes.STRING,
-        allowNull: true, // Permitimos que quede vacío si es un cliente ocasional
+      type: DataTypes.STRING,
+      allowNull: true, // Permitimos que quede vacío si es un cliente ocasional
     },
     phone: {
       type: DataTypes.STRING,
       allowNull: true, // Ej: "Consumidor Final" o el número de teléfono del cliente recurrente
     },
     DNI: {
-        type: DataTypes.STRING,
-        allowNull: true,
+      type: DataTypes.STRING,
+      allowNull: true,
+      unique: true, // El DNI debe ser único si se proporciona, para evitar duplicados en clientes recurrentes
     },
     creditMax: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: true, // Permitimos que quede vacío si no es un cliente con crédito
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true, // Permitimos que quede vacío si no es un cliente con crédito
     },
     allow_credit: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false, // Por defecto, los clientes no tienen permitido comprar fiado
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false, // Por defecto, los clientes no tienen permitido comprar fiado
     },
-    },
+  },
   {
     sequelize,
     tableName: 'customers',
