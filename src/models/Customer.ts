@@ -38,6 +38,7 @@ Customer.init(
     creditMax: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true, // Permitimos que quede vacío si no es un cliente con crédito
+      defaultValue: 90000, // Por defecto, el crédito máximo es 0 para clientes sin crédito
     },
     allow_credit: {
       type: DataTypes.BOOLEAN,

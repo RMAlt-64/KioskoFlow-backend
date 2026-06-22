@@ -1,105 +1,153 @@
 import type { Request, Response } from 'express';
+import type { Transaction } from 'sequelize';
 import sequelize from '../config/database.js';
 import Sale from '../models/Sale.js';
 import SaleDetail from '../models/SaleDetail.js';
 import Product from '../models/Product.js';
-import Customer from '../models/Customer.js'; // <-- IMPORTANTE: Importar Customer
-import CustomerAccount from '../models/CustomerAccount.js'; // <-- IMPORTANTE: Importar CustomerAccount
+import Customer from '../models/Customer.js';
+import CustomerAccount from '../models/CustomerAccount.js';
 import User from '../models/User.js';
 
+// ==========================================
+// 🛠️ FUNCIONES AUXILIARES (MODULARIZACIÓN)
+// ==========================================
+
+/**
+ * Valida si el cliente existe, si puede fiar y si no supera su límite de crédito proyectado.
+ */
+const validarCuentaCorrienteYLimite = async (
+  customer_id: number,
+  totalVentaNueva: number,
+  transaction: Transaction
+): Promise<void> => {
+  const customer = await Customer.findByPk(customer_id, { transaction });
+
+  if (!customer) {
+    throw new Error('El cliente especificado no existe.');
+  }
+
+  // REGLA DE ORO 1: ¿Tiene el permiso activado?
+  if (!customer.allow_credit) {
+    throw new Error(`El cliente '${customer.name}' no está autorizado para comprar fiado (Cuenta Corriente deshabilitada).`);
+  }
+
+  // REGLA DE ORO 2: Control de Límite de Crédito Máximo
+  const totalDebit = await CustomerAccount.sum('amount', {
+    where: { customer_id, type: 'debit' },
+    transaction
+  }) || 0;
+
+  const totalCredit = await CustomerAccount.sum('amount', {
+    where: { customer_id, type: 'credit' },
+    transaction
+  }) || 0;
+
+  const saldoActual = Number(totalDebit) - Number(totalCredit);
+  const deudaProyectada = saldoActual + totalVentaNueva;
+  const limiteAutorizado = Number((customer as any).max_credit || 20000.00); // Respaldo por defecto por las dudas
+
+  if (deudaProyectada > limiteAutorizado) {
+    throw new Error(`Operación rechazada por límite de crédito 🚫. El cliente '${customer.name}' tiene un saldo deudor de $${saldoActual}. Intentó comprar por $${totalVentaNueva}, lo que llevaría su deuda a $${deudaProyectada}, superando su límite máximo permitido de $${limiteAutorizado}.`);
+  }
+};
+
+/**
+ * Calcula el total previo de los productos enviados en la request para validaciones.
+ */
+const calcularTotalProyectado = async (products: any[], transaction: Transaction): Promise<number> => {
+  let total = 0;
+  for (const item of products) {
+    const product = await Product.findByPk(item.product_id, { transaction });
+    if (!product) {
+      throw new Error(`El producto con ID ${item.product_id} no existe.`);
+    }
+    total += Number(product.price) * item.quantity;
+  }
+  return total;
+};
+
+/**
+ * Procesa cada ítem del carrito: valida stock, resta inventario y genera los detalles históricos.
+ */
+const procesarStockYDetalles = async (
+  sale_id: number,
+  products: any[],
+  transaction: Transaction
+): Promise<void> => {
+  for (const item of products) {
+    const { product_id, quantity } = item;
+
+    const product = await Product.findByPk(product_id, { transaction });
+
+    if (!product) {
+      throw new Error(`El producto con ID ${product_id} no existe.`);
+    }
+
+    // Control de Stock
+    if (product.stock < quantity) {
+      throw new Error(`Stock insuficiente para: ${product.name}. Stock actual: ${product.stock}`);
+    }
+
+    // Guardamos el detalle del renglón con el precio histórico
+    await SaleDetail.create({
+      sale_id,
+      product_id,
+      quantity,
+      unit_price: product.price
+    }, { transaction });
+
+    // Restamos el stock físico del producto
+    product.stock -= quantity;
+    await product.save({ transaction });
+  }
+};
+
+// ==========================================
+// 🚀 ENDPOINTS PRINCIPALES
+// ==========================================
+
 export const createSale = async (req: Request, res: Response) => {
-  // Iniciamos una transacción de Sequelize
   const transaction = await sequelize.transaction();
 
   try {
-    // El cliente nos manda: quién atiende (user_id), quién compra (customer_id) y la lista de productos
     const { user_id, customer_id, products, payment_method } = req.body;
 
-    // 1. Validaciones básicas
+    // 1. Validaciones básicas de entrada
     if (!user_id || !customer_id || !products || products.length === 0 || !payment_method) {
       return res.status(400).json({ message: 'Datos de la venta incompletos.' });
     }
-    console.log('Datos recibidos para la venta:', { user_id, customer_id, products, payment_method });
 
-    // 2. Si quiere fiar, primero investigamos al cliente
+    // 2. Pre-cálculo del total de la venta para validar reglas de negocio
+    const totalVenta = await calcularTotalProyectado(products, transaction);
+
+    // 3. Si quiere fiar, ejecutamos el escudo modularizado de cuenta corriente y límites
     if (payment_method === 'Cuenta corriente') {
-      const customer = await Customer.findByPk(customer_id, { transaction });
-      
-      if (!customer) {
-        await transaction.rollback();
-        return res.status(404).json({ message: 'El cliente especificado no existe.' });
-      }
-
-      // ¡REGLA DE ORO!: Si no tiene el permiso activado, le rebotamos la operación en el acto
-      if (!customer.allow_credit) {
-        await transaction.rollback();
-        return res.status(400).json({ 
-          message: `El cliente '${customer.name}' no está autorizado para comprar fiado (Cuenta Corriente deshabilitada).` 
-        });
-      }
+      await validarCuentaCorrienteYLimite(customer_id, totalVenta, transaction);
     }
 
-    // Creamos la cabecera de la venta (empieza en total 0, lo calculamos abajo)
+    // 4. Creamos la cabecera de la venta con su total real directo
     const newSale = await Sale.create({
-        total: 0,
-        customer_id, // <-- ¡Acá impacta el 1 (random) o el ID del cliente de confianza!
-        user_id,
-        paymentMethod: payment_method
+      total: totalVenta,
+      customer_id,
+      user_id,
+      paymentMethod: payment_method
     }, { transaction });
 
-    let totalVenta = 0;
+    // 5. Procesamos stock y creamos los detalles de los renglones
+    await procesarStockYDetalles(newSale.id, products, transaction);
 
-    // 3. El bucle de productos que ya armaste y funciona excelente
-    for (const item of products) {
-      const { product_id, quantity } = item;
-
-      // Buscamos el producto para saber su precio actual y su stock
-      const product = await Product.findByPk(product_id, { transaction });
-      
-      if (!product) {
-        await transaction.rollback(); // Cancelamos todo si el producto no existe
-        return res.status(404).json({ message: `El producto con ID ${product_id} no existe.` });
-      }
-
-      // Control de Stock: Verificamos si nos queda suficiente mercadería en el kiosco
-      if (product.stock < quantity) {
-        await transaction.rollback(); // Cancelamos toda la venta para que no quede inconsistente
-        return res.status(400).json({ message: `Stock insuficiente para: ${product.name}. Stock actual: ${product.stock}` });
-      }
-
-      // Calculamos el subtotal de este renglón
-      const subtotalItem = Number(product.price) * quantity;
-      totalVenta += subtotalItem;
-
-      // Guardamos el detalle del renglón con el precio histórico de este momento
-      await SaleDetail.create({
-        sale_id: newSale.id,
-        product_id,
-        quantity,
-        unit_price: product.price
-      }, { transaction });
-
-      // RESTAMOS EL STOCK: Modificamos el producto original y lo guardamos
-      product.stock -= quantity;
-      await product.save({ transaction });
-    }
-
-    // 3. Finalmente, actualizamos el total real de la cabecera de la venta
-    newSale.total = totalVenta;
-    await newSale.save({ transaction });
-
-    // 4. NUEVO: Si la venta fue fiada, registramos el movimiento de DEUDA
+    // 6. Si la venta fue fiada, registramos el movimiento de DEUDA en su cuenta
     if (payment_method === 'Cuenta corriente') {
       await CustomerAccount.create({
         customer_id,
         sale_id: newSale.id,
-        type: 'debit', // debit significa que nos debe plata
+        type: 'debit',
         amount: totalVenta,
         description: `Compra fiada - Venta #${newSale.id}`
       }, { transaction });
     }
 
-    // Si todo salió bien hasta acá, confirmamos los cambios físicamente en PostgreSQL
+    // Guardamos físicamente los cambios
     await transaction.commit();
 
     return res.status(201).json({
@@ -108,57 +156,51 @@ export const createSale = async (req: Request, res: Response) => {
       total: totalVenta
     });
 
-  } catch (error) {
-    // Si saltó cualquier error inesperado, deshacemos todo para proteger los datos
+  } catch (error: any) {
+    // Si saltó cualquier error o regla de negocio fallada, cancelamos la transacción completa
     await transaction.rollback();
-    console.error(error);
-    return res.status(500).json({ message: 'Error crítico al procesar la venta.' });
+    console.error('Error en transaccion de venta:', error.message);
+    return res.status(400).json({ message: error.message || 'Error crítico al procesar la venta.' });
   }
 };
 
 export const getSalesHistory = async (req: Request, res: Response) => {
   try {
-    // Buscamos todas las ventas de la base de datos
     const sales = await Sale.findAll({
-      // Ordenamos para que las últimas ventas aparezcan primero (Descendente)
-      order: [['createdAt', 'DESC']], 
-      
-      // Acá está la magia de Sequelize: incluimos los modelos relacionados
+      order: [['createdAt', 'DESC']],
       include: [
         {
           model: User,
-          as: 'user', // Asegurate de que coincida con el 'as' de tus associations
-          attributes: ['id', 'username'] // Traemos solo el ID y el nombre del vendedor, no la contraseña
+          as: 'user',
+          attributes: ['id', 'username']
         },
         {
           model: Customer,
           as: 'customer',
-          attributes: ['id', 'name'] // Traemos solo ID y nombre del cliente
+          attributes: ['id', 'name']
         },
         {
           model: SaleDetail,
-          as: 'details', // El 'as' que le hayas puesto en associations para los renglones
+          as: 'details',
           include: [
             {
               model: Product,
               as: 'product',
-              attributes: ['id', 'name', 'price'] // De cada producto del detalle queremos saber el nombre y precio
+              attributes: ['id', 'name', 'price']
             }
           ]
         }
       ]
     });
 
-    // Mapeamos el resultado para devolverlo en un castellano bien limpio para el Front
     const historialCastellano = sales.map(sale => {
-      // Convertimos la instancia de Sequelize a un objeto JS común
-      const saleJson = sale.toJSON() as any; 
+      const saleJson = sale.toJSON() as any;
 
       return {
         venta_id: saleJson.id,
         fecha: saleJson.createdAt,
         total: Number(saleJson.total),
-        metodo_pago: saleJson.paymentMethod, // Tu ENUM en la base de datos
+        metodo_pago: saleJson.paymentMethod,
         vendedor: saleJson.user ? saleJson.user.username : 'Desconocido',
         cliente: saleJson.customer ? saleJson.customer.name : 'Consumidor Final',
         productos_vendidos: saleJson.details.map((detail: any) => ({
