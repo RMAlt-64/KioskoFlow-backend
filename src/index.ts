@@ -1,5 +1,6 @@
 import express from 'express';
 import type { Application, Request, Response } from 'express';
+import cors from 'cors';
 import dotenv from 'dotenv';
 import sequelize from './config/database.js';
 import setupAssociations from './models/associations.js';
@@ -18,7 +19,8 @@ dotenv.config();
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
 
-// 2. Middlewares: Permiten que el servidor entienda datos en formato JSON
+// 2. Middlewares
+app.use(cors()); // Permite peticiones del frontend (http://localhost:5173)
 app.use(express.json());
 
 app.use('/api/categories', categoryRoutes); // Usamos las rutas de categorías para cualquier petición que empiece con /categories
