@@ -2,8 +2,8 @@
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
     "target": "ESNext",         /* Versión de JavaScript de salida */
-    "module": "NodeNext",       /* Permite usar la lógica de módulos moderna de Node */
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",       /* Permite usar la lógica de módulos moderna de Node */
+    "moduleResolution": "bundler",
     "esModuleInterop": true,    /* Clave para que 'import express' funcione bien */
     "forceConsistentCasingInFileNames": true,
     
@@ -41,7 +41,7 @@
     // Recommended Options
     "strict": true,
     "jsx": "react-jsx",
-    "verbatimModuleSyntax": true,
+    "verbatimModuleSyntax": false,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
