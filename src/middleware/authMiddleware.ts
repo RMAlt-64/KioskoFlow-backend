@@ -22,7 +22,7 @@ export const authenticateToken = (req: AuthenticatedRequest, res: Response, next
 
         jwt.verify(token, process.env.JWT_SECRET || 'secret', (err, user) => {
             if (err) {
-                return res.status(403).json({ message: 'Token inválido o expirado.' });
+                return res.status(401).json({ message: 'Token inválido o expirado.' });
             }
             req.user = user as { id: number; username: string; role: 'Administrador' | 'Empleado' };
             next();

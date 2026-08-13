@@ -6,7 +6,8 @@ class Sale extends Model<InferAttributes<Sale>, InferCreationAttributes<Sale>> {
   declare total: number;
   declare customer_id: number; // Quién compró
   declare user_id: number; // Quién vendió
-  declare paymentMethod: 'Efectivo' | 'Débito' | 'Cuenta corriente' | 'Transferencia' | 'Tarjeta de crédito' ; // Método de pago utilizado
+  declare paymentMethod: 'Efectivo' | 'Débito' | 'Cuenta corriente' | 'Transferencia' | 'Tarjeta de crédito';
+  declare status: CreationOptional<'completada' | 'anulada'>;
 }
 
 Sale.init(
@@ -30,11 +31,15 @@ Sale.init(
       allowNull: false, // Obliga a que toda venta tenga un vendedor asignado
     },
     paymentMethod: {
-      type: DataTypes.ENUM('Efectivo', 'Débito', 'Cuenta corriente', 'Transferencia', 'Tarjeta de crédito'), // Opciones de pago comunes
+      type: DataTypes.ENUM('Efectivo', 'Débito', 'Cuenta corriente', 'Transferencia', 'Tarjeta de crédito'),
       allowNull: false,
-      defaultValue: 'Efectivo', // Asumimos que la mayoría de las ventas son en efectivo
-    }
-
+      defaultValue: 'Efectivo',
+    },
+    status: {
+      type: DataTypes.ENUM('completada', 'anulada'),
+      allowNull: false,
+      defaultValue: 'completada',
+    },
   },
   {
     sequelize,

@@ -201,6 +201,7 @@ export const getSalesHistory = async (req: Request, res: Response) => {
         fecha: saleJson.createdAt,
         total: Number(saleJson.total),
         metodo_pago: saleJson.paymentMethod,
+        status: saleJson.status,
         vendedor: saleJson.user ? saleJson.user.username : 'Desconocido',
         cliente: saleJson.customer ? saleJson.customer.name : 'Consumidor Final',
         productos_vendidos: saleJson.details.map((detail: any) => ({
@@ -218,5 +219,65 @@ export const getSalesHistory = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Error al obtener el historial de ventas.' });
+  }
+};
+
+export const anularSale = async (req: Request, res: Response) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const saleId = Number(req.params.id);
+    if (isNaN(saleId)) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'ID de venta inválido.' });
+    }
+
+    const sale = await Sale.findByPk(saleId, {
+      include: [{ model: SaleDetail, as: 'details' }],
+      transaction
+    });
+
+    if (!sale) {
+      await transaction.rollback();
+      return res.status(404).json({ message: 'Venta no encontrada.' });
+    }
+
+    if (sale.status === 'anulada') {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'La venta ya está anulada.' });
+    }
+
+    // 1. Restaurar stock de cada producto
+    for (const detail of (sale as any).details) {
+      const product = await Product.findByPk(detail.product_id, { transaction });
+      if (product) {
+        product.stock += detail.quantity;
+        await product.save({ transaction });
+      }
+    }
+
+    // 2. Si fue cuenta corriente, revertir el movimiento de deuda
+    if (sale.paymentMethod === 'Cuenta corriente') {
+      await CustomerAccount.create({
+        customer_id: sale.customer_id,
+        sale_id: sale.id,
+        type: 'credit',
+        amount: sale.total,
+        description: `Anulación de venta #${sale.id}`
+      }, { transaction });
+    }
+
+    // 3. Marcar venta como anulada
+    sale.status = 'anulada';
+    await sale.save({ transaction });
+
+    await transaction.commit();
+
+    return res.status(200).json({ message: `Venta #${saleId} anulada con éxito.` });
+
+  } catch (error: any) {
+    await transaction.rollback();
+    console.error('Error al anular venta:', error.message);
+    return res.status(500).json({ message: 'Error al anular la venta.' });
   }
 };
