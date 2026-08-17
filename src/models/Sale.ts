@@ -8,6 +8,8 @@ class Sale extends Model<InferAttributes<Sale>, InferCreationAttributes<Sale>> {
   declare user_id: number; // Quién vendió
   declare paymentMethod: 'Efectivo' | 'Débito' | 'Cuenta corriente' | 'Transferencia' | 'Tarjeta de crédito';
   declare status: CreationOptional<'completada' | 'anulada'>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
 }
 
 Sale.init(
@@ -39,6 +41,16 @@ Sale.init(
       type: DataTypes.ENUM('completada', 'anulada'),
       allowNull: false,
       defaultValue: 'completada',
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
     },
   },
   {

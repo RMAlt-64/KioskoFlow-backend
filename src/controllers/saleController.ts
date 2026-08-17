@@ -7,6 +7,7 @@ import Product from '../models/Product.js';
 import Customer from '../models/Customer.js';
 import CustomerAccount from '../models/CustomerAccount.js';
 import User from '../models/User.js';
+import { Op } from 'sequelize';
 
 // ==========================================
 // 🛠️ FUNCIONES AUXILIARES (MODULARIZACIÓN)
@@ -281,3 +282,49 @@ export const anularSale = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Error al anular la venta.' });
   }
 };
+
+export const getStats = async (req: Request, res: Response) => {
+  try {
+    // Fecha de hoy en midnight local
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    // 1. Ventas del día (solo completadas)
+    const ventasDelDia = await Sale.count({
+      where: {
+        status: 'completada',
+        createdAt: { [Op.gte]: startOfToday }
+      }
+    })
+
+    // 2. Productos con stock bajo (<= 5)
+    const productosStockBajo = await Product.findAll({
+      where: { stock: { [Op.lte]: 5 } },
+      order: [['stock', 'ASC']],
+      attributes: ['id', 'name', 'stock']
+    })
+
+    // 3. Clientes con saldo deudor
+    const customers = await Customer.findAll({ attributes: ['id', 'name'] })
+    const clientesConDeuda = []
+
+    for (const customer of customers) {
+      const totalDebit = await CustomerAccount.sum('amount', {
+        where: { customer_id: customer.id, type: 'debit' }
+      }) || 0
+      const totalCredit = await CustomerAccount.sum('amount', {
+        where: { customer_id: customer.id, type: 'credit' }
+      }) || 0
+      const saldo = Number(totalDebit) - Number(totalCredit)
+      if (saldo > 0) {
+        clientesConDeuda.push({ id: customer.id, name: customer.name, saldo })
+      }
+    }
+
+    return res.status(200).json({ ventasDelDia, productosStockBajo, clientesConDeuda })
+
+  } catch (error) {
+    console.error('Error al obtener stats:', error)
+    return res.status(500).json({ message: 'Error al obtener estadísticas.' })
+  }
+}
