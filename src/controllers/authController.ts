@@ -84,4 +84,8 @@ export const login = async (req: Request, res: Response) => {
     }
 };
 
+export const getUsers = async (req: Request, res: Response) => {
+    const users = await User.findAll({ attributes: ['id', 'username', 'role'] })
+    return res.status(200).json(users)
+}
 

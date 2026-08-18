@@ -32,3 +32,12 @@ export const authenticateToken = (req: AuthenticatedRequest, res: Response, next
     res.status(500).json({ message: 'Token inválido o expirado.' });
     }
 };
+
+
+export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => { 
+
+    if (req.user?.role !== 'Administrador') {
+        return res.status(403).json({ message: 'Acceso denegado. Se requiere rol de administrador.' });
+    }
+    next();
+} 
